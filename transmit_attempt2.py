@@ -1,5 +1,4 @@
 import time
-from datetime import date
 import numpy as  np
 import matplotlib.pyplot as plt
 import RPi.GPIO as GPIO
@@ -10,7 +9,7 @@ np.set_printoptions(precision=2)
 # Configure GPIO board
 GPIO.setmode(GPIO.BCM)
 pwrPin = 17
-GPIO.setup(pwrPin, GPIO.IN, pull_up_down=PUD_DOWN)
+GPIO.setup(pwrPin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 # Making samples per sec a multiple of 256 
 fsps = 1000*256# = about 2560 sps
@@ -44,8 +43,7 @@ sdr = RtlSdr()
 sdr.sample_rate = fsps 
 sdr.center_freq = 1.42e9
 
-# sdr.gain = 'auto'
-sdr.gain = 42.0 # This is max on rtl_sdr v4, according to sdr.valid_gains_db
+sdr.gain = 42.0 # This is max on rtl_sdr v4
 
 print("Sample Rate     : ", sdr.sample_rate)
 print("Center frequency: ", sdr.center_freq)
@@ -64,11 +62,9 @@ func_gen_fc = 0.5 # frequency on the function gen (0.1 Hz means that the square 
 n = Tmax/(1/func_gen_fc)
 print("# of periods we want to capture: ", n)
 
-#pow_arr = np.zeros(shape=((round(n*2)), samps))
 idx = 0
 
-samps = round(N/(n*2))
-print("# of samples gathered per transition: ", samps)
+print("# of samples gathered per transition: ", N)
 
 sleep_time = (1/func_gen_fc)/2
 
@@ -78,54 +74,61 @@ sampling_window = N/fsps
 # calculate offset for when to start the sdr reading during each state
 first_offset = (sleep_time - sampling_window)/2
 
-print("Thread will sleep for : ", sleep_count)
+print("Thread will sleep for : ", sleep_time)
 
 #power array with dimensions of n transitions and sample's read per transition
-raw_pow_arr = np.zeros(((round(n*2)), samps), dtype=np.complex_)
-
+raw_pow_arr = np.zeros(((round(n*2)), N), dtype=np.complex_)
 
 # n will correspond to number of periods generated for the time frame for gathering samples
 
 offset = first_offset
 
 for i in range(0, round(n)):
-    GPIO.wait_for_edge(pwrPin, GPIO.RISING, timeout=10000)
+    event = GPIO.wait_for_edge(pwrPin, GPIO.RISING, timeout=10000)
 
-    # waiting for high state
-    time.sleep(first_offset)
-    samples = ((np.zeros((samps))+1j)-1j)
-    samples = sdr.read_samples(samps) # Collect N samples on the sdr
-    raw_pow_arr[idx] = samples
-    idx = idx + 1
+    if event:
+        # waiting for high state
+        time.sleep(first_offset)
+        samples = ((np.zeros((N))+1j)-1j)
+        samples = sdr.read_samples(N) # Collect N samples on the sdr
+        raw_pow_arr[idx] = samples
+        idx = idx + 1
 
-    # waiting for low state
-    time.sleep(sleep_time)
-    
-    samples = ((np.zeros((samps))+1j)-1j)
-    samples = sdr.read_samples(samps) # Collect N samples on the sdr
-    raw_pow_arr[idx] = samples
-    idx = idx + 1
+        # waiting for low state
+        time.sleep(sleep_time)
+        
+        samples = ((np.zeros((N))+1j)-1j)
+        samples = sdr.read_samples(N) # Collect N samples on the sdr
+        raw_pow_arr[idx] = samples
+        idx = idx + 1
         
 # Compute average power per sample after all samples are read
 avg_hi_pow_arr = np.zeros(round(n))
 avg_lo_pow_arr = np.zeros(round(n))
-
+avg_pow_arr = np.zeros(round(n*2))
 
 idx = 0
+
+# compute power values 
 for j in range(0, round(n)):
     samples = raw_pow_arr[idx]
     pow_hi = np.real(samples.dot(samples.conj()))
     avg_hi_pow_arr[j] = pow_hi
+    avg_pow_arr[idx] = pow_hi
     idx = idx + 1
     samples = raw_pow_arr[idx]
     pow_lo = np.real(samples.dot(samples.conj()))
     avg_lo_pow_arr[j] = pow_lo
+    avg_pow_arr[idx] = pow_lo
     idx = idx + 1
+
     tot_power += pow_hi - pow_lo
 
-print("Average power: ", avg_hi_pow_arr)
+print("Average power: ", avg_pow_arr)
 print("low: ", avg_lo_pow_arr)
+print("high: ", avg_hi_pow_arr)
 print("tot pow: ", tot_power)
+
 np.savetxt('6-1-23-transmit-1hz-avg-pow', avg_pow_arr)
 np.savetxt('6-1-23-transmit-1hz-raw-samples', raw_pow_arr)
 

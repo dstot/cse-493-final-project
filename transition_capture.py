@@ -23,7 +23,7 @@ fc = 1.42e9
 dt = 1.0/fsps # time step size between samples
 nyquist = fsps /2.0
 
-# Cna change time for gathering samples
+# Can change time for gathering samples
 Tmax = 10.0
 #Tmax = 5.0
 #Tmax = 2.5
@@ -40,20 +40,19 @@ try:
 except NameError:
     print("could not find sdr")
 
-#sdr = RtlSdr()
+sdr = RtlSdr()
 
-# sdr.sample_rate = fsps 
-# sdr.center_freq = fc
+sdr.sample_rate = fsps 
+sdr.center_freq = fc
 
-# sdr.gain = 'auto'
-# sdr.gain = 42.0 # This is max on rtl_sdr v4, according to sdr.valid_gains_db
+sdr.gain = 42.0 # This is maximum and needs to be set 
 
-# print("Sample Rate     : ", sdr.sample_rate)
-# print("Center frequency: ", sdr.center_freq)
+print("Sample Rate     : ", sdr.sample_rate)
+print("Center frequency: ", sdr.center_freq)
 
 tot_power = 0
 
-func_gen_fc = 0.5 # frequency on the function gen (0.1 Hz means that the square wave will be ten seconds)
+func_gen_fc = 0.1 # frequency on the function gen (0.1 Hz means that the square wave will be ten seconds)
 
 #   |-----|     |
 #   |     |     |
@@ -75,31 +74,26 @@ sleep_count = (1/func_gen_fc)/2
 
 print("Thread will sleep for :", sleep_count)
 
+# Start collecting data on rising edge
 event = GPIO.wait_for_edge(pwrPin, GPIO.RISING, timeout=10000)
 
 # n will correspond to number of square waves generated for the time frame for gathering samples
 for i in range(0, round(n)):
     capture = 0
-    while GPIO.input(17):
-        print("h")
-        
-        if not capture:
-            
-            pow_arr[idx] = 1
-            idx = idx + 1
-            capture = 1
-            time.sleep(sleep_count)
-        
-    capture = 0    
+    while GPIO.input(17): 
+        pow_arr[idx] = 1
+        idx = idx + 1
+        capture = 1
+        time.sleep(sleep_count)
+          
     while not GPIO.input(17):
-        print("l")
-        if not capture:
-            
-            pow_arr[idx] = 0
-            idx = idx + 1
-            capture = 1
-            time.sleep(sleep_count)
+        pow_arr[idx] = 0
+        idx = idx + 1
+        capture = 1
+        time.sleep(sleep_count)
 
 print("Final results for function generator at ", func_gen_fc, " Hz", ": ")
 print(pow_arr)
+
+# should a txt file filled with 1010101010101...
 np.savetxt("100hz_verify_transition-capture", pow_arr)
